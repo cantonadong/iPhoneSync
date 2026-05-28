@@ -1,15 +1,21 @@
-# Build outputs
+# Binaries
 *.exe
-*_debug.exe
+*.exe~
+*.dll
+*.so
+*.dylib
 
-# Runtime cache (thumbnails, downloaded files, config)
-.cache/
+# Go build
+bin/
+dist/
 
-# Go toolchain
-*.syso
-
-# Editor / OS
+# IDE
 .vscode/
 .idea/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
 Thumbs.db
-Desktop.ini

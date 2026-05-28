@@ -2,18 +2,27 @@
 
 Browse and download iPhone photos from any browser on Windows — no iTunes, no iCloud.
 
-![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go) ![Windows](https://img.shields.io/badge/Windows-10%2F11-0078D4?logo=windows)
+![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go) ![Windows](https://img.shields.io/badge/Windows-10%2F11-0078D4?logo=windows) ![License](https://img.shields.io/badge/license-MIT-green)
 
 ## What it does
 
 Connect your iPhone via USB, run `iPhosyn.exe`, and a gallery opens in your browser. From there you can:
 
 - Browse all photos and videos from DCIM
-- Filter by **Photos** or **Videos**
+- Filter by **All**, **Photos**, or **Videos**
 - Select individual items or **Select All** (Ctrl+A)
-- Download selected files to any folder on your PC
-- View full-size images in a lightbox with zoom, pan, and **← → keyboard navigation**
+- Download selected files to any folder on your PC with real-time SSE progress
+- View full-size images in a lightbox with zoom, pan, and keyboard navigation
 - The app lives in the **system tray** — close the browser tab and it keeps running
+
+## Quick start
+
+1. Connect your iPhone via USB and tap **Trust This Computer** when prompted
+2. Run `iPhosyn.exe` — the gallery opens in your default browser automatically
+3. Wait a few seconds for the device to connect (the status dot turns green)
+4. Click thumbnails to preview, select items, choose a save folder, and click **Download**
+
+If a second instance is launched while one is already running, it focuses the existing browser tab instead.
 
 ## How it works
 
@@ -25,14 +34,17 @@ Connect your iPhone via USB, run `iPhosyn.exe`, and a gallery opens in your brow
 | Gallery UI | Vanilla JS + CSS Grid, lazy thumbnails, SSE download progress |
 | App shell | System tray via `getlantern/systray`, embedded assets via `//go:embed` |
 
-No iTunes, no iCloud, no drivers to install — just the Windows MTP driver that's built in.
+No iTunes, no iCloud, no extra drivers — just the Windows MTP driver that ships with Windows.
 
 ## Requirements
 
 - **Windows 10 / 11**
 - iPhone trusted on this PC ("Trust This Computer" tapped when prompted)
-- **Python 3 + pillow-heif** — only needed for HEIC thumbnails (`pip install pillow pillow-heif`)
-- No C compiler, no CGo
+- **Python 3 + pillow-heif** — only needed for HEIC/HEIF thumbnails:
+  ```
+  pip install pillow pillow-heif
+  ```
+- No C compiler, no CGo required
 
 ## Build from source
 
@@ -40,7 +52,7 @@ No iTunes, no iCloud, no drivers to install — just the Windows MTP driver that
 # Install rsrc (embeds the icon into the EXE)
 go install github.com/akavel/rsrc@latest
 
-# Generate icons and embed them
+# Generate the icon and embed it
 python gen_icon.py
 rsrc -ico app.ico -o rsrc.syso
 
@@ -48,24 +60,36 @@ rsrc -ico app.ico -o rsrc.syso
 go build -ldflags "-H windowsgui -s -w" -o iPhosyn.exe .
 ```
 
+## Keyboard shortcuts
+
+| Key | Action |
+|-----|--------|
+| `Ctrl+A` | Select all visible photos |
+| `←` / `→` | Previous / next photo in lightbox |
+| `Scroll` | Zoom in / out in lightbox (0.2× – 15×) |
+| `Drag` | Pan zoomed image in lightbox |
+| `Double-click` | Reset zoom in lightbox |
+| `ESC` | Close lightbox |
+
 ## Features
 
 - **Lazy thumbnails** — loaded only when scrolled into view; cached to disk on first access
-- **HEIC support** — Apple HEIC/HEIF photos rendered via `pillow-heif` (same engine as native iOS)
-- **Persistent PS daemon** — one PowerShell process keeps the Shell.Application COM object alive between copy operations; eliminates startup errors and cuts per-thumbnail overhead
-- **Shimmer skeleton** — animated placeholder while thumbnails load (no black squares)
+- **HEIC support** — Apple HEIC/HEIF photos rendered via `pillow-heif`
+- **Persistent PS daemon** — one PowerShell process keeps the Shell.Application COM object alive between copy operations; eliminates per-file startup overhead
+- **Shimmer skeleton** — animated placeholder while thumbnails load
 - **Single-instance** — launching a second copy opens the browser to the running instance
-- **Lightbox** — scroll-to-zoom (0.2×–15×), drag-to-pan, double-click reset, ← → to switch photos, ESC to close
-- **Batch download with SSE progress** — real-time per-file progress bar
+- **Lightbox** — scroll-to-zoom (0.2×–15×), drag-to-pan, double-click reset, ← → navigation, ESC to close
+- **Batch download with SSE progress** — real-time per-file progress bar with success/failure count
 - **Windows folder picker** — native dialog via PowerShell + Windows Forms
-- **WebDAV** on `:8081` — mount iPhone photos as a network drive (stub for MTP backend)
+- **LRU thumbnail cache** — in-memory cache capped at 200 MB; evicts oldest entries
+- **WebDAV** on `:8081` — mounts iPhone photos as a network drive
 
 ## Project structure
 
 ```
 iPhosyn-go/
 ├── main.go          # Entry point: port binding, browser open, system tray
-├── iphone.go        # MTP connector + PS daemon + thumbnail generation
+├── iphone.go        # MTP connector, PS daemon, thumbnail generation
 ├── server.go        # HTTP routes, LRU cache, folder picker, SSE download
 ├── webdav.go        # WebDAV server (stub provider for MTP backend)
 ├── templates/
@@ -75,6 +99,25 @@ iPhosyn-go/
 ├── go.mod
 └── go.sum
 ```
+
+## Troubleshooting
+
+**"iPhone not found" on startup**
+- Make sure the USB cable is connected and the iPhone screen is unlocked
+- Tap **Trust This Computer** on the iPhone if prompted
+- Try a different USB port or cable
+
+**HEIC thumbnails show as grey**
+- Install `pillow` and `pillow-heif`: `pip install pillow pillow-heif`
+- Make sure `python` is on your PATH
+
+**Port 8080 already in use**
+- iPhosyn detects this and opens your browser to the running instance automatically
+- If another app owns port 8080, close it and restart iPhosyn
+
+**Download stalls or times out**
+- Keep the iPhone screen on and unlocked during transfers
+- The PS daemon retries up to 90 × 300–400 ms per file before giving up
 
 ## License
 
