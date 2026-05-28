@@ -4,7 +4,7 @@ Browse and download iPhone photos from any browser on Windows — no iTunes, no 
 
 ![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go) ![Windows](https://img.shields.io/badge/Windows-10%2F11-0078D4?logo=windows) ![License](https://img.shields.io/badge/license-MIT-green)
 
-<img width="1017" height="814" alt="image" src="https://github.com/user-attachments/assets/60f73bf8-7c4b-483b-b3ef-5548aed98dc1" />
+<img width="760" height="607" alt="123" src="https://github.com/user-attachments/assets/5d464333-e69d-43a7-b35f-a9e56340e230" />
 
 
 ## What it does
