@@ -1,0 +1,15 @@
+# Build outputs
+*.exe
+*_debug.exe
+
+# Runtime cache (thumbnails, downloaded files, config)
+.cache/
+
+# Go toolchain
+*.syso
+
+# Editor / OS
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini

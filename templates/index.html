@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>iPhosyn</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #111;
+      --surface: #1c1c1e;
+      --border: #2c2c2e;
+      --accent: #0a84ff;
+      --text: #f2f2f7;
+      --muted: #8e8e93;
+      --success: #30d158;
+      --danger: #ff453a;
+      --header-h: 60px;
+      --footer-h: 68px;
+    }
+
+    html, body { height: 100%; background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; }
+
+    #app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+    /* ── Header ── */
+    header {
+      height: var(--header-h); flex-shrink: 0;
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; padding: 0 16px; gap: 12px;
+    }
+    .device-info { display: flex; flex-direction: column; min-width: 0; }
+    .device-name { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .device-status { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 5px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .dot.ok   { background: var(--success); }
+    .dot.err  { background: var(--danger); }
+    .dot.busy { background: #ff9f0a; animation: blink 1s ease-in-out infinite; }
+    .count { font-size: 12px; color: var(--muted); white-space: nowrap; margin-left: auto; }
+    .filters { display: flex; gap: 4px; margin-left: 8px; }
+    .fbtn {
+      padding: 5px 13px; border-radius: 20px; border: 1px solid var(--border);
+      background: transparent; color: var(--muted); cursor: pointer; font-size: 12px; transition: all .15s;
+    }
+    .fbtn:hover:not(.active) { color: var(--text); border-color: var(--muted); }
+    .fbtn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    /* ── Banner ── */
+    #banner {
+      display: none; padding: 7px 16px;
+      background: rgba(255,69,58,.12); border-bottom: 1px solid rgba(255,69,58,.3);
+      font-size: 12px; color: #ff7b72; text-align: center; flex-shrink: 0;
+    }
+    #banner.on { display: block; }
+
+    /* ── Grid ── */
+    #scroll { flex: 1; overflow-y: auto; padding: 3px; }
+    #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 3px; }
+
+    .item {
+      position: relative; aspect-ratio: 1; overflow: hidden; cursor: pointer;
+      background: var(--surface); border-radius: 2px; user-select: none;
+    }
+    .item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .item img.lazy { opacity: 0; transition: opacity .25s; }
+    .item img.loaded { opacity: 1; }
+
+    /* shimmer skeleton while thumbnail is in-flight */
+    @keyframes shimmer {
+      0%   { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    .item.loading::before {
+      content: ''; position: absolute; inset: 0; z-index: 1;
+      background: linear-gradient(90deg, #1c1c1e 25%, #2e2e32 50%, #1c1c1e 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s ease-in-out infinite;
+      pointer-events: none;
+    }
+    .item::after {
+      content: ''; position: absolute; inset: 0;
+      background: rgba(10,132,255,.4); opacity: 0; transition: opacity .15s; pointer-events: none;
+    }
+    .item.sel::after { opacity: 1; }
+    .chk {
+      position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: 50%;
+      border: 2px solid rgba(255,255,255,.75); background: rgba(0,0,0,.3);
+      display: flex; align-items: center; justify-content: center; pointer-events: none;
+      transition: background .15s, border-color .15s;
+    }
+    .item.sel .chk { background: var(--accent); border-color: var(--accent); }
+    .item.sel .chk::after { content: '✓'; color: #fff; font-size: 13px; }
+    .vbadge {
+      position: absolute; bottom: 5px; left: 5px; background: rgba(0,0,0,.55);
+      color: #fff; font-size: 10px; padding: 2px 5px; border-radius: 3px; pointer-events: none;
+    }
+
+    /* ── States ── */
+    .empty {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      height: 60vh; color: var(--muted); gap: 12px; font-size: 15px; grid-column: 1/-1;
+    }
+    .spinner {
+      width: 34px; height: 34px; border: 3px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite;
+    }
+
+    /* ── Footer ── */
+    footer {
+      height: var(--footer-h); flex-shrink: 0;
+      background: var(--surface); border-top: 1px solid var(--border);
+      display: flex; align-items: center; padding: 0 14px; gap: 8px;
+    }
+    .selinfo { font-size: 13px; color: var(--muted); white-space: nowrap; min-width: 72px; }
+    .btn {
+      padding: 8px 14px; border-radius: 8px; border: none; cursor: pointer;
+      font-size: 13px; font-weight: 500; white-space: nowrap; transition: opacity .15s;
+    }
+    .btn:hover { opacity: .82; }
+    .btn:disabled { opacity: .35; cursor: default; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-ghost   { background: var(--border); color: var(--text); }
+
+    .dest-wrap { position: relative; flex: 1; min-width: 0; }
+    .dest-wrap::before {
+      content: '📁'; position: absolute; left: 9px; top: 50%;
+      transform: translateY(-50%); font-size: 14px; pointer-events: none; line-height: 1;
+    }
+    #dest {
+      width: 100%; background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); padding: 7px 10px 7px 30px; border-radius: 6px;
+      font-size: 12px; font-family: 'Courier New', monospace; cursor: pointer;
+    }
+    #dest:hover { border-color: var(--accent); }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: calc(var(--footer-h) + 14px); left: 50%;
+      transform: translateX(-50%) translateY(16px);
+      background: #2c2c2e; color: var(--text);
+      padding: 10px 18px; border-radius: 10px; font-size: 13px;
+      opacity: 0; transition: opacity .3s, transform .3s;
+      pointer-events: none; z-index: 500; max-width: 450px; text-align: center;
+      box-shadow: 0 4px 20px rgba(0,0,0,.5);
+    }
+    #toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ── Lightbox ── */
+    #lb {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.92); z-index: 600;
+      align-items: center; justify-content: center; flex-direction: column; gap: 10px;
+      overflow: hidden; user-select: none;
+    }
+    #lb.on { display: flex; }
+    #lbimg {
+      max-width: 95vw; max-height: 86vh; object-fit: contain;
+      border-radius: 4px; cursor: zoom-in; transform-origin: center center;
+    }
+    #lbname { font-size: 11px; color: var(--muted); pointer-events: none; }
+    .lb-close {
+      position: fixed; top: 14px; right: 18px;
+      font-size: 36px; line-height: 1; cursor: pointer; color: rgba(255,255,255,.55); z-index: 10;
+    }
+    .lb-close:hover { color: #fff; }
+    .lb-arrow {
+      position: fixed; top: 50%; transform: translateY(-50%);
+      font-size: 56px; line-height: 1; cursor: pointer; z-index: 10;
+      color: rgba(255,255,255,.35); padding: 20px 14px;
+      transition: color .15s; user-select: none;
+    }
+    .lb-arrow:hover { color: rgba(255,255,255,.9); }
+    .lb-arrow.hidden { opacity: 0; pointer-events: none; }
+    #lb-prev { left: 0; }
+    #lb-next { right: 0; }
+    #lb-counter {
+      font-size: 11px; color: var(--muted); pointer-events: none;
+    }
+    #lb-hint {
+      position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+      font-size: 11px; color: var(--muted); pointer-events: none; white-space: nowrap;
+    }
+
+    @keyframes spin  { to { transform: rotate(360deg); } }
+    @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:.3; } }
+
+    /* ── Progress modal ── */
+    #prog-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.72); z-index: 700;
+      align-items: center; justify-content: center;
+    }
+    #prog-overlay.on { display: flex; }
+    .prog-box {
+      background: var(--surface); border-radius: 14px; padding: 26px 30px;
+      width: 360px; max-width: 92vw;
+      display: flex; flex-direction: column; gap: 14px;
+      box-shadow: 0 8px 40px rgba(0,0,0,.6);
+    }
+    .prog-title { font-size: 15px; font-weight: 600; }
+    .prog-file  { font-size: 12px; color: var(--muted); font-family: monospace;
+                  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 16px; }
+    .prog-bar-wrap { background: var(--border); border-radius: 4px; height: 6px; overflow: hidden; }
+    .prog-bar { background: var(--accent); height: 100%; border-radius: 4px;
+                transition: width .35s; width: 0%; }
+    .prog-count { font-size: 12px; color: var(--muted); text-align: right; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="device-info">
+      <span class="device-name" id="devname">iPhosyn</span>
+      <span class="device-status">
+        <span class="dot busy" id="dot"></span>
+        <span id="statustext">Connecting…</span>
+      </span>
+    </div>
+    <span class="count" id="countbadge"></span>
+    <div class="filters">
+      <button class="fbtn active" data-f="all">All</button>
+      <button class="fbtn" data-f="photo">Photos</button>
+      <button class="fbtn" data-f="video">Videos</button>
+    </div>
+  </header>
+
+  <div id="banner">iPhone disconnected — reconnect USB and tap "Trust This Computer", then refresh.</div>
+
+  <div id="scroll">
+    <div id="grid">
+      <div class="empty">
+        <div class="spinner"></div>
+        <span>Loading photos from iPhone…</span>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <span class="selinfo" id="selinfo">0 selected</span>
+    <button class="btn btn-ghost" onclick="selAll()">Select All</button>
+    <button class="btn btn-ghost" onclick="clearSel()">Clear</button>
+    <button class="btn btn-ghost" onclick="window.location.reload()">🔄 Refresh</button>
+    <div class="dest-wrap">
+      <input type="text" id="dest" placeholder="Click to select save folder…" readonly onclick="pickFolder()">
+    </div>
+    <button class="btn btn-primary" id="btnDl" onclick="downloadSel()" disabled>Download</button>
+  </footer>
+</div>
+
+<div id="toast"></div>
+
+<div id="prog-overlay">
+  <div class="prog-box">
+    <div class="prog-title" id="prog-title">Transferring…</div>
+    <div class="prog-file"  id="prog-file">Preparing…</div>
+    <div class="prog-bar-wrap"><div class="prog-bar" id="prog-bar"></div></div>
+    <div class="prog-count" id="prog-count"></div>
+    <button class="btn btn-primary" id="prog-close" onclick="closeProgress()" style="display:none">Done</button>
+  </div>
+</div>
+
+<div id="lb">
+  <span class="lb-close" id="lbclose">×</span>
+  <span class="lb-arrow hidden" id="lb-prev" onclick="lbNav(-1)">&#8249;</span>
+  <span class="lb-arrow hidden" id="lb-next" onclick="lbNav(+1)">&#8250;</span>
+  <img id="lbimg" src="" alt="" draggable="false">
+  <span id="lbname"></span>
+  <span id="lb-counter"></span>
+  <span id="lb-hint">← → switch · Wheel: zoom · Drag: pan · Dbl-click: reset · ESC: close</span>
+</div>
+
+<script>
+  let all = [], filtered = [], sel = new Set(), curFilter = 'all';
+  let io_obs = null;
+  let lbScale = 1, lbX = 0, lbY = 0;
+  let lbDragging = false, lbDragSX = 0, lbDragSY = 0;
+  let lbIndex = -1;
+
+  // ── Boot ───────────────────────────────────────────────────────────────────
+  loadConfig();
+  loadPhotos();
+  setInterval(pollStatus, 9000);
+  document.querySelectorAll('.fbtn').forEach(b =>
+    b.addEventListener('click', () => setFilter(b.dataset.f))
+  );
+
+  // ── Config & folder picker ─────────────────────────────────────────────────
+  async function loadConfig() {
+    try {
+      const cfg = await (await fetch('/api/config')).json();
+      if (cfg.dest) document.getElementById('dest').value = cfg.dest;
+    } catch {}
+  }
+
+  async function pickFolder() {
+    const input = document.getElementById('dest');
+    const prev = input.value;
+    input.value = 'Selecting…';
+    try {
+      const r = await (await fetch('/api/pick-folder')).json();
+      input.value = r.path || prev;
+    } catch {
+      input.value = prev;
+      toast('Could not open folder picker', 3000);
+    }
+  }
+
+  // ── Data ───────────────────────────────────────────────────────────────────
+  async function loadPhotos() {
+    try {
+      const r = await fetch('/api/photos');
+      const data = await r.json();
+      if (!Array.isArray(data)) throw new Error('bad response');
+      all = data;
+      applyFilter();
+      pollStatus();
+    } catch {
+      renderState('<span>Failed to load. Make sure iPhone is connected via USB and trusted, then refresh.</span>');
+    }
+  }
+
+  async function pollStatus() {
+    try {
+      const s = await (await fetch('/api/status')).json();
+      const dot = document.getElementById('dot');
+      const txt = document.getElementById('statustext');
+      const banner = document.getElementById('banner');
+      if (s.connected) {
+        dot.className = 'dot ok';
+        txt.textContent = `Connected · ${s.count} items`;
+        document.getElementById('devname').textContent = s.device || 'iPhone';
+        banner.classList.remove('on');
+      } else {
+        dot.className = 'dot err';
+        txt.textContent = 'Disconnected';
+        banner.classList.add('on');
+      }
+    } catch {}
+  }
+
+  // ── Filter ─────────────────────────────────────────────────────────────────
+  function setFilter(f) {
+    curFilter = f;
+    document.querySelectorAll('.fbtn').forEach(b =>
+      b.classList.toggle('active', b.dataset.f === f)
+    );
+    applyFilter();
+  }
+
+  function applyFilter() {
+    filtered = curFilter === 'all' ? all : all.filter(p => p.kind === curFilter);
+    const fp = new Set(filtered.map(p => p.path));
+    for (const s of sel) { if (!fp.has(s)) sel.delete(s); }
+    renderGrid();
+    document.getElementById('countbadge').textContent = filtered.length ? `${filtered.length} items` : '';
+    updateSelUI();
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  function renderGrid() {
+    const grid = document.getElementById('grid');
+    if (!filtered.length) {
+      grid.innerHTML = '<div class="empty"><span>No photos found</span></div>';
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    filtered.forEach(photo => {
+      const div = document.createElement('div');
+      div.className = 'item' + (sel.has(photo.path) ? ' sel' : '');
+      div.dataset.path = photo.path;
+
+      const img = document.createElement('img');
+      img.className = 'lazy';
+      img.dataset.src = `/api/thumbnail?path=${encodeURIComponent(photo.path)}`;
+      img.alt = photo.name;
+      img.addEventListener('load', () => {
+        img.classList.add('loaded');
+        div.classList.remove('loading');
+      });
+      img.addEventListener('error', () => div.classList.remove('loading'));
+
+      const chk = document.createElement('span');
+      chk.className = 'chk';
+      div.appendChild(img);
+      div.appendChild(chk);
+
+      if (photo.kind === 'video') {
+        const badge = document.createElement('span');
+        badge.className = 'vbadge';
+        badge.textContent = '▶ Video';
+        div.appendChild(badge);
+      }
+
+      div.addEventListener('click', e => {
+        if (e.detail >= 2) { openLb(photo); return; }
+        toggleSel(photo.path, div);
+      });
+
+      frag.appendChild(div);
+    });
+    grid.innerHTML = '';
+    grid.appendChild(frag);
+    lazySetup();
+  }
+
+  function renderState(html) {
+    document.getElementById('grid').innerHTML = `<div class="empty">${html}</div>`;
+  }
+
+  function lazySetup() {
+    if (io_obs) io_obs.disconnect();
+    io_obs = new IntersectionObserver(entries => {
+      entries.forEach(e => {
+        if (!e.isIntersecting) return;
+        const img = e.target;
+        if (img.dataset.src) {
+          img.closest('.item')?.classList.add('loading');
+          img.src = img.dataset.src;
+          delete img.dataset.src;
+          io_obs.unobserve(img);
+        }
+      });
+    }, { rootMargin: '300px' });
+    document.querySelectorAll('img.lazy').forEach(img => io_obs.observe(img));
+  }
+
+  // ── Selection ──────────────────────────────────────────────────────────────
+  function toggleSel(path, el) {
+    if (sel.has(path)) sel.delete(path); else sel.add(path);
+    (el || document.querySelector(`.item[data-path="${CSS.escape(path)}"]`))
+      ?.classList.toggle('sel', sel.has(path));
+    updateSelUI();
+  }
+
+  function selAll() {
+    filtered.forEach(p => sel.add(p.path));
+    document.querySelectorAll('.item').forEach(el => el.classList.add('sel'));
+    updateSelUI();
+  }
+
+  function clearSel() {
+    sel.clear();
+    document.querySelectorAll('.item').forEach(el => el.classList.remove('sel'));
+    updateSelUI();
+  }
+
+  function updateSelUI() {
+    const n = sel.size;
+    document.getElementById('selinfo').textContent = n ? `${n} selected` : '0 selected';
+    document.getElementById('btnDl').disabled = n === 0;
+  }
+
+  // ── Download (SSE streaming with progress) ────────────────────────────────
+  async function downloadSel() {
+    if (!sel.size) return;
+    const dest = document.getElementById('dest').value.trim();
+    const paths = [...sel];
+    const btn = document.getElementById('btnDl');
+    btn.disabled = true;
+    showProgress(paths.length);
+    try {
+      const resp = await fetch('/api/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths, dest }),
+      });
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const parts = buf.split('\n\n');
+        buf = parts.pop();
+        for (const part of parts) {
+          const line = part.replace(/^data:\s*/, '').trim();
+          if (!line) continue;
+          try {
+            const msg = JSON.parse(line);
+            updateProgress(msg.i, msg.total, msg.file);
+            if (msg.done) {
+              const txt = msg.failed > 0
+                ? `Saved ${msg.saved} · ${msg.failed} failed → ${msg.dest}`
+                : `Saved ${msg.saved} files → ${msg.dest}`;
+              finishProgress(txt);
+              if (msg.dest) document.getElementById('dest').value = msg.dest;
+              clearSel();
+            }
+          } catch {}
+        }
+      }
+    } catch (e) {
+      finishProgress(`Error: ${e.message}`);
+      document.getElementById('prog-close').style.display = 'block';
+    } finally {
+      btn.disabled = sel.size === 0;
+    }
+  }
+
+  function showProgress(total) {
+    document.getElementById('prog-title').textContent = 'Transferring…';
+    document.getElementById('prog-file').textContent = 'Preparing…';
+    document.getElementById('prog-bar').style.width = '0%';
+    document.getElementById('prog-count').textContent = `0 / ${total}`;
+    document.getElementById('prog-close').style.display = 'none';
+    document.getElementById('prog-overlay').classList.add('on');
+  }
+  function updateProgress(i, total, file) {
+    const pct = total > 0 ? (i / total * 100).toFixed(1) : 0;
+    document.getElementById('prog-bar').style.width = pct + '%';
+    document.getElementById('prog-count').textContent = `${i} / ${total}`;
+    if (file) document.getElementById('prog-file').textContent = file;
+  }
+  function finishProgress(msg) {
+    document.getElementById('prog-title').textContent = msg;
+    document.getElementById('prog-file').textContent = '';
+    document.getElementById('prog-bar').style.width = '100%';
+    document.getElementById('prog-close').style.display = 'block';
+  }
+  function closeProgress() {
+    document.getElementById('prog-overlay').classList.remove('on');
+  }
+
+  // ── Lightbox ───────────────────────────────────────────────────────────────
+  function openLb(photo) {
+    lbIndex = filtered.findIndex(p => p.path === photo.path);
+    lbScale = 1; lbX = 0; lbY = 0;
+    const img = document.getElementById('lbimg');
+    img.src = `/api/file?path=${encodeURIComponent(photo.path)}`;
+    img.style.transform = '';
+    img.style.cursor = 'zoom-in';
+    document.getElementById('lbname').textContent = photo.name;
+    document.getElementById('lb').classList.add('on');
+    updateLbNav();
+  }
+
+  function closeLb() {
+    document.getElementById('lb').classList.remove('on');
+    document.getElementById('lbimg').src = '';
+    lbDragging = false;
+    lbIndex = -1;
+  }
+
+  function lbNav(dir) {
+    const next = lbIndex + dir;
+    if (next < 0 || next >= filtered.length) return;
+    openLb(filtered[next]);
+  }
+
+  function updateLbNav() {
+    document.getElementById('lb-prev').classList.toggle('hidden', lbIndex <= 0);
+    document.getElementById('lb-next').classList.toggle('hidden', lbIndex >= filtered.length - 1);
+    document.getElementById('lb-counter').textContent =
+      filtered.length > 1 ? `${lbIndex + 1} / ${filtered.length}` : '';
+  }
+
+  function lbSetTransform() {
+    const img = document.getElementById('lbimg');
+    img.style.transform = `translate(${lbX}px,${lbY}px) scale(${lbScale})`;
+    img.style.cursor = lbDragging ? 'grabbing' : (lbScale > 1 ? 'grab' : 'zoom-in');
+  }
+
+  document.getElementById('lb').addEventListener('click', e => {
+    if (e.target === document.getElementById('lb')) closeLb();
+  });
+  document.getElementById('lbclose').addEventListener('click', closeLb);
+  document.getElementById('lbimg').addEventListener('click', e => e.stopPropagation());
+
+  document.getElementById('lbimg').addEventListener('wheel', e => {
+    e.preventDefault(); e.stopPropagation();
+    const lb = document.getElementById('lb');
+    const r = lb.getBoundingClientRect();
+    const Ox = r.left + r.width / 2, Oy = r.top + r.height / 2;
+    const factor = e.deltaY < 0 ? 1.2 : 0.833;
+    const newScale = Math.max(0.2, Math.min(15, lbScale * factor));
+    const ratio = newScale / lbScale;
+    lbX = (e.clientX - Ox) * (1 - ratio) + lbX * ratio;
+    lbY = (e.clientY - Oy) * (1 - ratio) + lbY * ratio;
+    lbScale = newScale;
+    lbSetTransform();
+  }, { passive: false });
+
+  document.getElementById('lbimg').addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    lbDragging = true;
+    lbDragSX = e.clientX - lbX; lbDragSY = e.clientY - lbY;
+    e.preventDefault(); lbSetTransform();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!lbDragging) return;
+    lbX = e.clientX - lbDragSX; lbY = e.clientY - lbDragSY;
+    lbSetTransform();
+  });
+  document.addEventListener('mouseup', () => {
+    if (lbDragging) { lbDragging = false; lbSetTransform(); }
+  });
+  document.getElementById('lbimg').addEventListener('dblclick', e => {
+    e.stopPropagation();
+    lbScale = 1; lbX = 0; lbY = 0; lbSetTransform();
+  });
+
+  document.addEventListener('keydown', e => {
+    const lbOpen = document.getElementById('lb').classList.contains('on');
+    if (e.key === 'Escape') { if (lbOpen) closeLb(); return; }
+    if (lbOpen) {
+      if (e.key === 'ArrowLeft')  { e.preventDefault(); lbNav(-1); return; }
+      if (e.key === 'ArrowRight') { e.preventDefault(); lbNav(+1); return; }
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'a') { e.preventDefault(); selAll(); }
+  });
+
+  let _toastTimer;
+  function toast(msg, ms = 3000) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('on');
+    clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(() => el.classList.remove('on'), ms);
+  }
+</script>
+</body>
+</html>
